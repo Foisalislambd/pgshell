@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "type": "module",
   "bin": {
-    "pgshell": "./dist/index.js"
+    "pgshell": "dist/index.js"
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -22,6 +22,11 @@
   ],
   "author": "",
   "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Foisalislambd/pgshell"
+  },
+  "homepage": "https://github.com/Foisalislambd/pgshell#readme",
   "dependencies": {
     "@inquirer/prompts": "^8.3.0",
     "chalk": "^5.6.2",
