@@ -66,6 +66,7 @@ export async function runInteractiveUI() {
     try {
       const action = await select({
         message: 'What would you like to do?',
+        pageSize: 15,
         choices: [
           { name: '📋 List Tables', value: 'list_tables' },
           { name: '🔍 View Table Data', value: 'view_table' },
