@@ -66,19 +66,19 @@ export async function runInteractiveUI() {
   while (!exit) {
     try {
       const action = await select({
-        message: 'What would you like to do?',
+        message: chalk.bold('What would you like to do?'),
         pageSize: 15,
         choices: [
-          { name: '📋 List Tables', value: 'list_tables' },
-          { name: '🔍 View Table Data', value: 'view_table' },
-          { name: '📖 Describe Table Structure', value: 'describe_table' },
-          { name: '➕ Create Table', value: 'create_table' },
-          { name: '📥 Insert Row (Interactive)', value: 'insert_row' },
-          { name: '🗑️  Drop Specific Table', value: 'drop_table' },
-          { name: '🚨 Drop ALL Tables (Danger)', value: 'drop_all_tables' },
-          { name: '⚡ Run Custom SQL Query', value: 'run_query' },
-          { name: '📊 Monitor Active Queries', value: 'monitor' },
-          { name: '❌ Disconnect & Exit', value: 'exit' }
+          { name: '📋 List all tables', value: 'list_tables', description: 'See what tables exist in the database' },
+          { name: '🔍 View table data', value: 'view_table', description: 'Browse rows/records in any table' },
+          { name: '📖 Table structure', value: 'describe_table', description: 'See columns, types, and details' },
+          { name: '➕ Create new table', value: 'create_table', description: 'Create a new table easily' },
+          { name: '📥 Add new row', value: 'insert_row', description: 'Insert a new record into a table' },
+          { name: '🗑️  Delete one table', value: 'drop_table', description: 'Remove a single table' },
+          { name: '🚨 Delete all tables', value: 'drop_all_tables', description: 'Warning! Removes all data' },
+          { name: '⚡ Run custom SQL', value: 'run_query', description: 'Execute any SQL command' },
+          { name: '📊 Monitor active queries', value: 'monitor', description: 'See what queries are running now' },
+          { name: '❌ Disconnect & Exit', value: 'exit', description: 'Close connection and quit' }
         ]
       });
 
