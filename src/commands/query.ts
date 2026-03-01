@@ -2,6 +2,7 @@ import chalk from 'chalk';
 import { connect, disconnect, query } from '../db/client.js';
 import { renderTable } from '../ui/tableRenderer.js';
 import { getDbUrlFromEnv, printEnvHint } from '../db/env.js';
+import { sanitizeErrorMessage } from '../utils/sanitizeError.js';
 
 export async function executeQueryCommand(sql: string) {
   const connectionString = getDbUrlFromEnv();
@@ -26,8 +27,9 @@ export async function executeQueryCommand(sql: string) {
     } else {
       console.log(chalk.dim('No rows returned.'));
     }
-  } catch (error: any) {
-    console.error(chalk.red(`\nQuery Error: ${error.message}`));
+  } catch (error: unknown) {
+    console.error(chalk.red(`\nQuery Error: ${sanitizeErrorMessage(error)}`));
+    process.exit(1);
   } finally {
     await disconnect();
   }

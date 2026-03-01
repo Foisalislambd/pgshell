@@ -1,13 +1,18 @@
 import Table from 'cli-table3';
 import chalk from 'chalk';
 
-export function renderTable(rows: any[], headers?: string[]): void {
+export function renderTable(rows: Record<string, unknown>[], headers?: string[]): void {
   if (!rows || rows.length === 0) {
     console.log(chalk.yellow('No results found.'));
     return;
   }
-
-  const keys = headers || Object.keys(rows[0]);
+  const keys = headers ?? (() => {
+    const keySet = new Set<string>();
+    for (const row of rows) {
+      for (const k of Object.keys(row)) keySet.add(k);
+    }
+    return Array.from(keySet);
+  })();
   const table = new Table({
     head: keys.map(k => chalk.cyan.bold(k)),
     style: {

@@ -4,6 +4,7 @@ import { connect, disconnect, query as dbQuery } from '../db/client.js';
 import { renderTable } from './tableRenderer.js';
 import { getDbUrlFromEnv, printEnvHint } from '../db/env.js';
 import { printBanner } from '../utils/banner.js';
+import { sanitizeErrorMessage } from '../utils/sanitizeError.js';
 
 export async function runInteractiveUI() {
   console.clear();
@@ -51,12 +52,13 @@ export async function runInteractiveUI() {
       await connect({ connectionString });
       connected = true;
       console.log(chalk.green('✓ Connected successfully!\n'));
-    } catch (error: any) {
-      if (error.name === 'ExitPromptError' || error.message?.includes('SIGINT')) {
+    } catch (error: unknown) {
+      const err = error as Error & { name?: string };
+      if (err?.name === 'ExitPromptError' || err?.message?.includes('SIGINT')) {
         console.log(chalk.gray('\nGoodbye! 👋\n'));
         process.exit(0);
       }
-      console.log(chalk.red(`\nConnection failed: ${error.message}\n`));
+      console.log(chalk.red(`\nConnection failed: ${sanitizeErrorMessage(error)}\n`));
       connectionString = ''; // Reset so they can type it again
     }
   }
@@ -114,13 +116,14 @@ export async function runInteractiveUI() {
           exit = true;
           break;
       }
-    } catch (err: any) {
-      if (err.name === 'ExitPromptError' || err.message?.includes('SIGINT')) {
+    } catch (err: unknown) {
+      const e = err as Error & { name?: string };
+      if (e?.name === 'ExitPromptError' || e?.message?.includes('SIGINT')) {
         console.log(chalk.gray('\nGoodbye! 👋\n'));
         await disconnect();
         process.exit(0);
       }
-      console.log(chalk.red(`\nError: ${err.message}`));
+      console.log(chalk.red(`\nError: ${sanitizeErrorMessage(err)}`));
     }
     
     if (!exit) {
@@ -130,6 +133,18 @@ export async function runInteractiveUI() {
 
   await disconnect();
   console.log(chalk.blue('Goodbye! 👋\n'));
+}
+
+const GET_TABLES_SQL = `
+  SELECT table_name 
+  FROM information_schema.tables 
+  WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+  ORDER BY table_name;
+`;
+
+async function getPublicTables(): Promise<{ table_name: string }[]> {
+  const result = await dbQuery(GET_TABLES_SQL);
+  return result.rows;
 }
 
 async function handleListTables() {
@@ -151,21 +166,14 @@ async function handleListTables() {
 }
 
 async function handleDescribeTable() {
-  const tablesResult = await dbQuery(`
-    SELECT table_name 
-    FROM information_schema.tables 
-    WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
-    ORDER BY table_name;
-  `);
-
-  if (tablesResult.rows.length === 0) {
+  const tables = await getPublicTables();
+  if (tables.length === 0) {
     console.log(chalk.yellow('No tables found in public schema.'));
     return;
   }
-
   const tableName = await select({
     message: 'Select a table to describe:',
-    choices: tablesResult.rows.map(r => ({ name: r.table_name, value: r.table_name }))
+    choices: tables.map(r => ({ name: r.table_name, value: r.table_name }))
   });
 
   const sql = `
@@ -185,21 +193,14 @@ async function handleDescribeTable() {
 }
 
 async function handleViewTable() {
-  const tablesResult = await dbQuery(`
-    SELECT table_name 
-    FROM information_schema.tables 
-    WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
-    ORDER BY table_name;
-  `);
-
-  if (tablesResult.rows.length === 0) {
+  const tables = await getPublicTables();
+  if (tables.length === 0) {
     console.log(chalk.yellow('No tables found in public schema.'));
     return;
   }
-
   const tableName = await select({
     message: 'Select a table to view:',
-    choices: tablesResult.rows.map(r => ({ name: r.table_name, value: r.table_name }))
+    choices: tables.map(r => ({ name: r.table_name, value: r.table_name }))
   });
 
   const limit = await input({
@@ -214,21 +215,14 @@ async function handleViewTable() {
 }
 
 async function handleInsertRow() {
-  const tablesResult = await dbQuery(`
-    SELECT table_name 
-    FROM information_schema.tables 
-    WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
-    ORDER BY table_name;
-  `);
-
-  if (tablesResult.rows.length === 0) {
+  const tables = await getPublicTables();
+  if (tables.length === 0) {
     console.log(chalk.yellow('No tables found to insert data into.'));
     return;
   }
-
   const tableName = await select({
     message: 'Select a table to insert into:',
-    choices: tablesResult.rows.map(r => ({ name: r.table_name, value: r.table_name }))
+    choices: tables.map(r => ({ name: r.table_name, value: r.table_name }))
   });
 
   // Get column info to prompt user correctly
@@ -239,7 +233,7 @@ async function handleInsertRow() {
     ORDER BY ordinal_position;
   `, [tableName]);
 
-  const rowData: any = {};
+  const rowData: Record<string, string> = {};
   console.log(chalk.dim(`\nInserting a new row into "${tableName}". Leave blank to use DEFAULT/NULL.`));
 
   for (const col of colInfo.rows) {
@@ -270,20 +264,38 @@ async function handleInsertRow() {
     const result = await dbQuery(sql, values);
     console.log(chalk.green(`\n✓ Row inserted successfully!`));
     renderTable(result.rows);
-  } catch (err: any) {
-    console.log(chalk.red(`\nFailed to insert row: ${err.message}`));
+  } catch (err: unknown) {
+    console.log(chalk.red(`\nFailed to insert row: ${sanitizeErrorMessage(err)}`));
   }
+}
+
+function validateTableName(val: string): true | string {
+  const trimmed = val.trim();
+  if (trimmed.length === 0) return 'Table name cannot be empty';
+  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(trimmed)) return 'Use only letters, numbers, underscores (e.g. my_table)';
+  return true;
+}
+
+function validateColumnsDef(val: string): true | string {
+  const trimmed = val.trim();
+  if (trimmed.length === 0) return 'Columns definition cannot be empty';
+  if (trimmed.includes(';')) return 'Semicolons are not allowed (security)';
+  if (trimmed.includes('--')) return 'SQL comments (--) are not allowed (security)';
+  if (trimmed.includes('/*') || trimmed.includes('*/')) return 'Block comments are not allowed (security)';
+  const dangerous = /\b(DROP|DELETE|TRUNCATE|ALTER|EXEC|EXECUTE)\s+/i;
+  if (dangerous.test(trimmed)) return 'Dangerous SQL keywords are not allowed in column definition';
+  return true;
 }
 
 async function handleCreateTable() {
   const tableName = await input({ 
     message: 'Enter new table name:',
-    validate: (val) => val.trim().length > 0 ? true : 'Table name cannot be empty'
+    validate: validateTableName
   });
   
   const columns = await input({
     message: 'Enter columns definition (e.g. id SERIAL PRIMARY KEY, name VARCHAR(50)):',
-    validate: (val) => val.trim().length > 0 ? true : 'Columns definition cannot be empty'
+    validate: validateColumnsDef
   });
 
   const sql = `CREATE TABLE "${tableName}" (${columns});`;
@@ -291,27 +303,20 @@ async function handleCreateTable() {
   try {
     await dbQuery(sql);
     console.log(chalk.green(`\n✓ Table "${tableName}" created successfully!`));
-  } catch (err: any) {
-    console.log(chalk.red(`\nFailed to create table: ${err.message}`));
+  } catch (err: unknown) {
+    console.log(chalk.red(`\nFailed to create table: ${sanitizeErrorMessage(err)}`));
   }
 }
 
 async function handleDropSpecificTable() {
-  const tablesResult = await dbQuery(`
-    SELECT table_name 
-    FROM information_schema.tables 
-    WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
-    ORDER BY table_name;
-  `);
-
-  if (tablesResult.rows.length === 0) {
+  const tables = await getPublicTables();
+  if (tables.length === 0) {
     console.log(chalk.yellow('No tables found in public schema.'));
     return;
   }
-
   const tableName = await select({
     message: 'Select a table to DROP:',
-    choices: tablesResult.rows.map(r => ({ name: r.table_name, value: r.table_name }))
+    choices: tables.map(r => ({ name: r.table_name, value: r.table_name }))
   });
 
   const isSure = await confirm({ 
@@ -328,18 +333,12 @@ async function handleDropSpecificTable() {
 }
 
 async function handleDropAllTables() {
-  const tablesResult = await dbQuery(`
-    SELECT table_name 
-    FROM information_schema.tables 
-    WHERE table_schema = 'public' AND table_type = 'BASE TABLE';
-  `);
-
-  if (tablesResult.rows.length === 0) {
+  const tables = await getPublicTables();
+  if (tables.length === 0) {
     console.log(chalk.yellow('No tables found in the database.'));
     return;
   }
-
-  console.log(chalk.red.bold(`\n⚠️  WARNING: You are about to drop ALL ${tablesResult.rows.length} tables in the public schema!`));
+  console.log(chalk.red.bold(`\n⚠️  WARNING: You are about to drop ALL ${tables.length} tables in the public schema!`));
   
   const isSure = await confirm({ 
     message: 'Are you absolutely sure you want to proceed? THIS CANNOT BE UNDONE!', 
@@ -347,7 +346,7 @@ async function handleDropAllTables() {
   });
 
   if (isSure) {
-    const tableNames = tablesResult.rows.map(r => `"${r.table_name}"`).join(', ');
+    const tableNames = tables.map(r => `"${r.table_name}"`).join(', ');
     await dbQuery(`DROP TABLE ${tableNames} CASCADE;`);
     console.log(chalk.green(`\n✓ All tables dropped successfully!`));
   } else {
@@ -362,15 +361,16 @@ async function handleRunQuery() {
 
   if (!sql.trim()) return;
 
-  const result = await dbQuery(sql);
-  
-  const commandLabel = result.command || 'query';
-  const rowCount = result.rowCount !== null ? `(${result.rowCount} rows affected)` : '';
-  
-  console.log(chalk.green(`\nExecuted successfully: ${chalk.bold(commandLabel)} ${rowCount}`));
-  
-  if (result.rows && result.rows.length > 0) {
-    renderTable(result.rows);
+  try {
+    const result = await dbQuery(sql);
+    const commandLabel = result.command || 'query';
+    const rowCount = result.rowCount !== null ? `(${result.rowCount} rows affected)` : '';
+    console.log(chalk.green(`\nExecuted successfully: ${chalk.bold(commandLabel)} ${rowCount}`));
+    if (result.rows && result.rows.length > 0) {
+      renderTable(result.rows);
+    }
+  } catch (err: unknown) {
+    console.log(chalk.red(`\nQuery failed: ${sanitizeErrorMessage(err)}`));
   }
 }
 

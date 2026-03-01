@@ -5,6 +5,7 @@ import { config } from 'dotenv';
 import { runInteractiveUI } from './ui/mainMenu.js';
 import { executeQueryCommand } from './commands/query.js';
 import chalk from 'chalk';
+import { sanitizeErrorMessage } from './utils/sanitizeError.js';
 
 config(); // Load .env file automatically
 
@@ -16,12 +17,13 @@ program
   .version('1.0.0');
 
 // Helper to handle any top-level graceful exits
-const handleExit = (error: any) => {
-  if (error.name === 'ExitPromptError' || error.message?.includes('SIGINT')) {
+const handleExit = (error: unknown) => {
+  const e = error as Error & { name?: string };
+  if (e?.name === 'ExitPromptError' || e?.message?.includes('SIGINT')) {
     console.log(chalk.gray('\nGoodbye! 👋\n'));
     process.exit(0);
   } else {
-    console.error(chalk.red(`\nFatal Error: ${error.message}\n`));
+    console.error(chalk.red(`\nFatal Error: ${sanitizeErrorMessage(error)}\n`));
     process.exit(1);
   }
 };
