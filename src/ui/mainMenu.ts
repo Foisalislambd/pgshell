@@ -3,10 +3,11 @@ import chalk from 'chalk';
 import { connect, disconnect, query as dbQuery } from '../db/client.js';
 import { renderTable } from './tableRenderer.js';
 import { getDbUrlFromEnv, printEnvHint } from '../db/env.js';
+import { printBanner } from '../utils/banner.js';
 
 export async function runInteractiveUI() {
   console.clear();
-  console.log(chalk.blue.bold(`\n🚀 Welcome to pgshell - The All-In-One PostgreSQL Manager\n`));
+  printBanner();
 
   // Connection Phase
   let connected = false;
