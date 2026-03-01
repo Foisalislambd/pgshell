@@ -16,8 +16,6 @@
 
 ---
 
-<br>
-
 ## ✨ What is PgShell?
 
 PgShell is a terminal-based tool that gives you full control over PostgreSQL through an **interactive menu** and **direct query mode**. Connect to local or cloud databases, browse tables, run SQL, monitor activity — all from your favorite terminal.
@@ -30,8 +28,6 @@ PgShell is a terminal-based tool that gives you full control over PostgreSQL thr
 | 📊 | **Formatted output** — Clean tables with syntax highlighting |
 
 ---
-
-<br>
 
 ## 📋 Table of Contents
 
@@ -47,8 +43,6 @@ PgShell is a terminal-based tool that gives you full control over PostgreSQL thr
 
 ---
 
-<br>
-
 ## 🛠 Requirements
 
 - **Node.js** 18+
@@ -56,8 +50,6 @@ PgShell is a terminal-based tool that gives you full control over PostgreSQL thr
 - Database credentials
 
 ---
-
-<br>
 
 ## 📦 Installation
 
@@ -90,8 +82,6 @@ pgshell
 ```
 
 ---
-
-<br>
 
 ## ⚙️ Configuration
 
@@ -131,8 +121,6 @@ SSL is enabled automatically for `sslmode=require`, `amazonaws.com`, or `supabas
 
 ---
 
-<br>
-
 ## 🚀 Usage
 
 1. Create a `.env` file (see [Configuration](#-configuration))
@@ -140,8 +128,6 @@ SSL is enabled automatically for `sslmode=require`, `amazonaws.com`, or `supabas
 3. PgShell connects automatically; otherwise it prompts for connection details
 
 ---
-
-<br>
 
 ## 📱 Interactive UI
 
@@ -174,8 +160,6 @@ Run `pgshell` or `pgshell ui` to open the interactive menu. Works with or withou
 
 ---
 
-<br>
-
 ## ⚡ Direct Query Mode
 
 Run a single query without the UI. Requires `.env` credentials.
@@ -198,8 +182,6 @@ pgshell query "INSERT INTO logs (message) VALUES ('test')"
 Results appear as formatted tables. Exits with code 1 on errors.
 
 ---
-
-<br>
 
 ## 📝 Examples
 
@@ -234,8 +216,6 @@ pgshell query "SELECT table_name FROM information_schema.tables WHERE table_sche
 
 ---
 
-<br>
-
 ## 📂 Project Structure
 
 ```
@@ -266,8 +246,6 @@ pgshell/
 | `npm start` | Run built output |
 
 ---
-
-<br>
 
 ## 📄 License
 
