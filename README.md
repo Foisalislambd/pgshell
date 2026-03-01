@@ -1,4 +1,5 @@
 <p align="center">
+  <a href="https://www.npmjs.com/package/pgshell"><img src="https://img.shields.io/npm/v/pgshell?color=cb3837&logo=npm" alt="npm" /></a>
   <img src="https://img.shields.io/badge/PostgreSQL-316192?style=for-the-badge&logo=postgresql&logoColor=white" alt="PostgreSQL" />
   <img src="https://img.shields.io/badge/Node.js-339933?style=for-the-badge&logo=nodedotjs&logoColor=white" alt="Node.js" />
   <img src="https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
@@ -53,8 +54,26 @@ PgShell is a terminal-based tool that gives you full control over PostgreSQL thr
 
 ## 📦 Installation
 
+**Quick install** — Use PgShell from anywhere with a single command:
+
 ```bash
-git clone <your-repo-url>
+npm install -g pgshell
+```
+
+Then run:
+
+```bash
+pgshell
+# or
+pgshell query "SELECT * FROM users LIMIT 5"
+```
+
+---
+
+**From source** (for development or contribution):
+
+```bash
+git clone https://github.com/Foisalislambd/pgshell
 cd pgshell
 npm install
 npm run build
@@ -74,7 +93,7 @@ npx tsx src/index.ts
 npm run dev
 ```
 
-**Global install** (run from anywhere):
+**Local link** (run from source without publishing):
 
 ```bash
 npm link
@@ -85,7 +104,7 @@ pgshell
 
 ## ⚙️ Configuration
 
-PgShell reads credentials from a `.env` file in the project directory.
+PgShell reads credentials from a `.env` file in the **current directory** where you run `pgshell`. Create it in your project folder before running.
 
 ### Option 1 — Individual variables
 
@@ -123,9 +142,9 @@ SSL is enabled automatically for `sslmode=require`, `amazonaws.com`, or `supabas
 
 ## 🚀 Usage
 
-1. Create a `.env` file (see [Configuration](#-configuration))
-2. Run `npm run dev` or `pgshell`
-3. PgShell connects automatically; otherwise it prompts for connection details
+1. Install: `npm install -g pgshell`
+2. Create a `.env` file in your project directory (see [Configuration](#-configuration))
+3. Run `pgshell` — PgShell connects automatically; otherwise it prompts for connection details
 
 ---
 
