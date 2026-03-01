@@ -1,0 +1,37 @@
+import Table from 'cli-table3';
+import chalk from 'chalk';
+
+export function renderTable(rows: any[], headers?: string[]): void {
+  if (!rows || rows.length === 0) {
+    console.log(chalk.yellow('No results found.'));
+    return;
+  }
+
+  const keys = headers || Object.keys(rows[0]);
+  const table = new Table({
+    head: keys.map(k => chalk.cyan.bold(k)),
+    style: {
+      head: [], // Keep default colors off so chalk works
+      border: ['gray']
+    }
+  });
+
+  rows.forEach(row => {
+    const values = keys.map(k => {
+      let val = row[k];
+      if (val === null) return chalk.gray('NULL');
+      if (typeof val === 'object') return JSON.stringify(val);
+      if (typeof val === 'number') return chalk.yellow(String(val));
+      if (typeof val === 'boolean') return val ? chalk.green('true') : chalk.red('false');
+      
+      // Truncate long strings
+      const strVal = String(val);
+      if (strVal.length > 50) return strVal.substring(0, 47) + '...';
+      return strVal;
+    });
+    table.push(values);
+  });
+
+  console.log(table.toString());
+  console.log(chalk.dim(`Total rows: ${rows.length}`));
+}
