@@ -69,7 +69,9 @@ export async function runInteractiveUI() {
         choices: [
           { name: '📋 List Tables', value: 'list_tables' },
           { name: '🔍 View Table Data', value: 'view_table' },
+          { name: '📖 Describe Table Structure', value: 'describe_table' },
           { name: '➕ Create Table', value: 'create_table' },
+          { name: '📥 Insert Row (Interactive)', value: 'insert_row' },
           { name: '🗑️  Drop Specific Table', value: 'drop_table' },
           { name: '🚨 Drop ALL Tables (Danger)', value: 'drop_all_tables' },
           { name: '⚡ Run Custom SQL Query', value: 'run_query' },
@@ -85,8 +87,14 @@ export async function runInteractiveUI() {
         case 'view_table':
           await handleViewTable();
           break;
+        case 'describe_table':
+          await handleDescribeTable();
+          break;
         case 'create_table':
           await handleCreateTable();
+          break;
+        case 'insert_row':
+          await handleInsertRow();
           break;
         case 'drop_table':
           await handleDropSpecificTable();
@@ -105,28 +113,22 @@ export async function runInteractiveUI() {
           break;
       }
     } catch (err: any) {
-      // Catch graceful exits from inner prompts
       if (err.name === 'ExitPromptError' || err.message?.includes('SIGINT')) {
         console.log(chalk.gray('\nGoodbye! 👋\n'));
         await disconnect();
         process.exit(0);
       }
-      // Any generic database error inside the loop
       console.log(chalk.red(`\nError: ${err.message}`));
     }
     
     if (!exit) {
-      console.log('\n'); // Spacing between actions
+      console.log('\n');
     }
   }
 
   await disconnect();
   console.log(chalk.blue('Goodbye! 👋\n'));
 }
-
-// ------------------------------------------------------------------
-// Sub-routines for Actions
-// ------------------------------------------------------------------
 
 async function handleListTables() {
   const sql = `
@@ -136,6 +138,40 @@ async function handleListTables() {
     ORDER BY table_name;
   `;
   const result = await dbQuery(sql);
+  renderTable(result.rows);
+}
+
+async function handleDescribeTable() {
+  const tablesResult = await dbQuery(`
+    SELECT table_name 
+    FROM information_schema.tables 
+    WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+    ORDER BY table_name;
+  `);
+
+  if (tablesResult.rows.length === 0) {
+    console.log(chalk.yellow('No tables found in public schema.'));
+    return;
+  }
+
+  const tableName = await select({
+    message: 'Select a table to describe:',
+    choices: tablesResult.rows.map(r => ({ name: r.table_name, value: r.table_name }))
+  });
+
+  const sql = `
+    SELECT 
+        column_name as "Column", 
+        data_type as "Type", 
+        is_nullable as "Nullable", 
+        column_default as "Default"
+    FROM information_schema.columns
+    WHERE table_name = $1 AND table_schema = 'public'
+    ORDER BY ordinal_position;
+  `;
+  
+  const result = await dbQuery(sql, [tableName]);
+  console.log(chalk.cyan(`\nStructure of table "${tableName}":`));
   renderTable(result.rows);
 }
 
@@ -164,9 +200,70 @@ async function handleViewTable() {
   });
 
   const result = await dbQuery(`SELECT * FROM "${tableName}" LIMIT $1`, [Number(limit)]);
-  
   console.log(chalk.cyan(`\nShowing up to ${limit} rows from "${tableName}":`));
   renderTable(result.rows);
+}
+
+async function handleInsertRow() {
+  const tablesResult = await dbQuery(`
+    SELECT table_name 
+    FROM information_schema.tables 
+    WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+    ORDER BY table_name;
+  `);
+
+  if (tablesResult.rows.length === 0) {
+    console.log(chalk.yellow('No tables found to insert data into.'));
+    return;
+  }
+
+  const tableName = await select({
+    message: 'Select a table to insert into:',
+    choices: tablesResult.rows.map(r => ({ name: r.table_name, value: r.table_name }))
+  });
+
+  // Get column info to prompt user correctly
+  const colInfo = await dbQuery(`
+    SELECT column_name, data_type, is_nullable, column_default
+    FROM information_schema.columns
+    WHERE table_name = $1 AND table_schema = 'public'
+    ORDER BY ordinal_position;
+  `, [tableName]);
+
+  const rowData: any = {};
+  console.log(chalk.dim(`\nInserting a new row into "${tableName}". Leave blank to use DEFAULT/NULL.`));
+
+  for (const col of colInfo.rows) {
+    // Skip auto-incrementing columns by default if they have a nextval default
+    const isAutoInc = col.column_default && col.column_default.includes('nextval');
+    
+    const value = await input({
+      message: `${col.column_name} (${col.data_type})${isAutoInc ? ' [Auto-inc]' : ''}:`,
+    });
+
+    if (value.trim() !== '') {
+      rowData[col.column_name] = value;
+    }
+  }
+
+  if (Object.keys(rowData).length === 0) {
+    console.log(chalk.yellow('\nNo data provided. Insert cancelled.'));
+    return;
+  }
+
+  const cols = Object.keys(rowData).map(c => `"${c}"`).join(', ');
+  const placeholders = Object.keys(rowData).map((_, i) => `$${i + 1}`).join(', ');
+  const values = Object.values(rowData);
+
+  const sql = `INSERT INTO "${tableName}" (${cols}) VALUES (${placeholders}) RETURNING *;`;
+  
+  try {
+    const result = await dbQuery(sql, values);
+    console.log(chalk.green(`\n✓ Row inserted successfully!`));
+    renderTable(result.rows);
+  } catch (err: any) {
+    console.log(chalk.red(`\nFailed to insert row: ${err.message}`));
+  }
 }
 
 async function handleCreateTable() {
@@ -186,7 +283,6 @@ async function handleCreateTable() {
     await dbQuery(sql);
     console.log(chalk.green(`\n✓ Table "${tableName}" created successfully!`));
   } catch (err: any) {
-    // We catch locally here so the main loop doesn't print generic error
     console.log(chalk.red(`\nFailed to create table: ${err.message}`));
   }
 }
@@ -210,7 +306,6 @@ async function handleDropSpecificTable() {
   });
 
   const isSure = await confirm({ 
-    // Kept plain text to avoid Inquirer terminal width bugs with Chalk
     message: `Are you sure you want to drop table "${tableName}"? (This will also drop dependent objects)`, 
     default: false 
   });
@@ -238,7 +333,6 @@ async function handleDropAllTables() {
   console.log(chalk.red.bold(`\n⚠️  WARNING: You are about to drop ALL ${tablesResult.rows.length} tables in the public schema!`));
   
   const isSure = await confirm({ 
-    // Removed chalk wrapping inside prompt message to prevent rendering bugs
     message: 'Are you absolutely sure you want to proceed? THIS CANNOT BE UNDONE!', 
     default: false 
   });
