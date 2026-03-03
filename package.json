@@ -25,7 +25,7 @@
   "license": "ISC",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Foisalislambd/pgshell"
+    "url": "git+https://github.com/Foisalislambd/pgshell.git"
   },
   "homepage": "https://github.com/Foisalislambd/pgshell#readme",
   "dependencies": {
