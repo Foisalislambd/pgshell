@@ -4,6 +4,7 @@ import { Command } from 'commander';
 import { config } from 'dotenv';
 import { runInteractiveUI } from './ui/mainMenu.js';
 import { executeQueryCommand } from './commands/query.js';
+import { executeDbListCommand, executeDbCreateCommand, executeDbDropCommand } from './commands/database.js';
 import chalk from 'chalk';
 import { sanitizeErrorMessage } from './utils/sanitizeError.js';
 
@@ -47,6 +48,41 @@ program
   .action(async (sql) => {
     try {
       await executeQueryCommand(sql);
+    } catch (error) {
+      handleExit(error);
+    }
+  });
+
+// Database commands
+program
+  .command('list')
+  .description('List all databases on the server')
+  .action(async () => {
+    try {
+      await executeDbListCommand();
+    } catch (error) {
+      handleExit(error);
+    }
+  });
+
+program
+  .command('create <name>')
+  .description('Create a new database')
+  .action(async (name) => {
+    try {
+      await executeDbCreateCommand(name);
+    } catch (error) {
+      handleExit(error);
+    }
+  });
+
+program
+  .command('drop <name>')
+  .description('Drop a database')
+  .option('-y, --yes', 'Skip confirmation prompt')
+  .action(async (name, opts) => {
+    try {
+      await executeDbDropCommand(name, opts.yes);
     } catch (error) {
       handleExit(error);
     }

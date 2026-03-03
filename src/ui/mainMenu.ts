@@ -1,6 +1,6 @@
 import { input, select, password, confirm } from '@inquirer/prompts';
 import chalk from 'chalk';
-import { connect, disconnect, query as dbQuery } from '../db/client.js';
+import { connect, disconnect, query as dbQuery, getAdminConnectionString, runOnDatabase } from '../db/client.js';
 import { renderTable } from './tableRenderer.js';
 import { getDbUrlFromEnv, printEnvHint } from '../db/env.js';
 import { printBanner } from '../utils/banner.js';
@@ -69,7 +69,7 @@ export async function runInteractiveUI() {
     try {
       const action = await select({
         message: chalk.bold('What would you like to do?'),
-        pageSize: 15,
+        pageSize: 18,
         choices: [
           { name: '📋 List all tables', value: 'list_tables', description: 'See what tables exist in the database' },
           { name: '🔍 View table data', value: 'view_table', description: 'Browse rows/records in any table' },
@@ -80,11 +80,27 @@ export async function runInteractiveUI() {
           { name: '🚨 Delete all tables', value: 'drop_all_tables', description: 'Warning! Removes all data' },
           { name: '⚡ Run custom SQL', value: 'run_query', description: 'Execute any SQL command' },
           { name: '📊 Monitor active queries', value: 'monitor', description: 'See what queries are running now' },
+          { name: '📂 List all databases', value: 'list_databases', description: 'See all databases on the server' },
+          { name: '➕ Create database', value: 'create_database', description: 'Create a new database' },
+          { name: '🗑️  Delete database', value: 'drop_database', description: 'Remove a database (with confirmation)' },
+          { name: '🔄 Switch database', value: 'switch_database', description: 'Reconnect to a different database' },
           { name: '❌ Disconnect & Exit', value: 'exit', description: 'Close connection and quit' }
         ]
       });
 
       switch (action) {
+        case 'list_databases':
+          await handleListDatabases();
+          break;
+        case 'create_database':
+          await handleCreateDatabase();
+          break;
+        case 'drop_database':
+          await handleDropDatabase();
+          break;
+        case 'switch_database':
+          await handleSwitchDatabase();
+          break;
         case 'list_tables':
           await handleListTables();
           break;
@@ -142,9 +158,142 @@ const GET_TABLES_SQL = `
   ORDER BY table_name;
 `;
 
+const GET_DATABASES_SQL = `
+  SELECT datname as "Database", pg_size_pretty(pg_database_size(datname)) as "Size"
+  FROM pg_database
+  WHERE datistemplate = false
+  ORDER BY datname;
+`;
+
 async function getPublicTables(): Promise<{ table_name: string }[]> {
   const result = await dbQuery(GET_TABLES_SQL);
   return result.rows;
+}
+
+async function getCurrentDatabase(): Promise<string | null> {
+  const r = await dbQuery('SELECT current_database() as db');
+  return r.rows[0]?.db ?? null;
+}
+
+async function handleListDatabases() {
+  const result = await dbQuery(GET_DATABASES_SQL);
+  console.log(chalk.cyan('\nDatabases on server:'));
+  renderTable(result.rows);
+}
+
+function validateDatabaseName(val: string): true | string {
+  const trimmed = val.trim();
+  if (trimmed.length === 0) return 'Database name cannot be empty';
+  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(trimmed)) return 'Use only letters, numbers, underscores (e.g. my_database)';
+  return true;
+}
+
+async function handleCreateDatabase() {
+  const dbName = await input({
+    message: 'Enter new database name:',
+    validate: validateDatabaseName
+  });
+
+  try {
+    await dbQuery(`CREATE DATABASE "${dbName}"`);
+    console.log(chalk.green(`\n✓ Database "${dbName}" created successfully!`));
+  } catch (err: unknown) {
+    console.log(chalk.red(`\nFailed to create database: ${sanitizeErrorMessage(err)}`));
+  }
+}
+
+async function handleDropDatabase() {
+  const result = await dbQuery(GET_DATABASES_SQL);
+  const databases = result.rows as { Database: string; Size: string }[];
+  const currentDb = await getCurrentDatabase();
+
+  if (databases.length === 0) {
+    console.log(chalk.yellow('No databases found.'));
+    return;
+  }
+
+  const dbToDrop = await select({
+    message: 'Select a database to DROP:',
+    choices: databases.map((r) => ({
+      name: `${r.Database} (${r.Size})` + (r.Database === currentDb ? ' [current]' : ''),
+      value: r.Database
+    }))
+  });
+
+  const isSure = await confirm({
+    message: `Are you sure you want to DROP database "${dbToDrop}"? All data will be permanently lost!`,
+    default: false
+  });
+
+  if (!isSure) {
+    console.log(chalk.gray('\nOperation cancelled.'));
+    return;
+  }
+
+  try {
+    const postgresUrl = dbToDrop === currentDb ? getAdminConnectionString('postgres') : null;
+    await runOnDatabase('postgres', async (adminPool) => {
+      await adminPool.query(`SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()`, [dbToDrop]);
+      await adminPool.query(`DROP DATABASE "${dbToDrop}"`);
+    });
+    console.log(chalk.green(`\n✓ Database "${dbToDrop}" dropped successfully!`));
+    if (dbToDrop === currentDb && postgresUrl) {
+      console.log(chalk.yellow('\nYou were connected to that database. Reconnecting to postgres...'));
+      await disconnect();
+      await connect({ connectionString: postgresUrl });
+      console.log(chalk.green('✓ Reconnected to postgres.'));
+    }
+  } catch (err: unknown) {
+    console.log(chalk.red(`\nFailed to drop database: ${sanitizeErrorMessage(err)}`));
+  }
+}
+
+async function handleSwitchDatabase() {
+  const result = await dbQuery(GET_DATABASES_SQL);
+  const databases = result.rows as { Database: string; Size: string }[];
+  const currentDb = await getCurrentDatabase();
+
+  if (databases.length === 0) {
+    console.log(chalk.yellow('No databases found.'));
+    return;
+  }
+
+  const dbToSwitch = await select({
+    message: 'Select database to connect to:',
+    choices: databases.map((r) => ({
+      name: `${r.Database} (${r.Size})` + (r.Database === currentDb ? ' [current]' : ''),
+      value: r.Database
+    }))
+  });
+
+  if (dbToSwitch === currentDb) {
+    console.log(chalk.gray('\nAlready connected to that database.'));
+    return;
+  }
+
+  const newUrl = getAdminConnectionString(dbToSwitch);
+  const fallbackUrl = getAdminConnectionString(currentDb || 'postgres');
+  if (!newUrl) {
+    console.log(chalk.red('\nCould not build connection string.'));
+    return;
+  }
+
+  try {
+    await disconnect();
+    await connect({ connectionString: newUrl });
+    console.log(chalk.green(`\n✓ Switched to database "${dbToSwitch}".`));
+  } catch (err: unknown) {
+    console.log(chalk.red(`\nFailed to switch: ${sanitizeErrorMessage(err)}`));
+    if (fallbackUrl) {
+      console.log(chalk.yellow('Attempting to reconnect to previous database...'));
+      try {
+        await connect({ connectionString: fallbackUrl });
+        console.log(chalk.green('✓ Reconnected to previous database.'));
+      } catch {
+        console.log(chalk.red('Reconnection failed. You may need to reconnect manually.'));
+      }
+    }
+  }
 }
 
 async function handleListTables() {

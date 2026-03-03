@@ -154,6 +154,10 @@ Run `pgshell` or `pgshell ui` to open the interactive menu. Works with or withou
 
 | Menu Option | Description |
 |-------------|-------------|
+| 📂 **List all databases** | See all databases on the server with sizes |
+| ➕ **Create database** | Create a new database |
+| 🗑️ **Delete database** | Drop a database (with confirmation) |
+| 🔄 **Switch database** | Reconnect to a different database |
 | 📋 **List all tables** | Tables in `public` schema with owner and row estimates |
 | 🔍 **View table data** | Browse rows with configurable limit |
 | 📖 **Table structure** | Columns, types, nullability, defaults |
@@ -174,8 +178,9 @@ Run `pgshell` or `pgshell ui` to open the interactive menu. Works with or withou
 
 - **Ctrl+C** — Safe exit
 - Blank insert fields → use DEFAULT or NULL
-- Table names: letters, numbers, underscores only
+- Table and database names: letters, numbers, underscores only
 - Dangerous SQL is blocked in table creation
+- When you drop the database you're connected to, PgShell automatically reconnects to `postgres`
 
 ---
 
@@ -185,6 +190,24 @@ Run a single query without the UI. Requires `.env` credentials.
 
 ```bash
 pgshell query "SELECT * FROM users LIMIT 5"
+```
+
+## 📂 Database Commands
+
+Run database operations from the CLI. Requires `.env` credentials.
+
+```bash
+# List all databases
+pgshell list
+
+# Create a database
+pgshell create my_database
+
+# Drop a database (prompts for confirmation)
+pgshell drop my_database
+
+# Drop without confirmation
+pgshell drop my_database --yes
 ```
 
 ```bash
