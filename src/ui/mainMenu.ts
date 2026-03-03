@@ -309,13 +309,20 @@ async function handleSwitchDatabase() {
 }
 
 async function handleListTables() {
+  // ANALYZE refreshes stats so Est. Rows shows approximate counts (otherwise 0 until first analyze)
+  try {
+    await dbQuery('ANALYZE');
+  } catch {
+    /* proceed anyway - ANALYZE can fail on read-only replicas */
+  }
+
   const sql = `
     SELECT 
       t.table_schema AS "Schema",
       t.table_name AS "Table",
       t.table_type AS "Type",
       COALESCE(pt.tableowner, '-') AS "Owner",
-      COALESCE(pst.n_live_tup::text, '-') AS "Est. Rows"
+      COALESCE(pst.n_live_tup::text, '0') AS "Est. Rows"
     FROM information_schema.tables t
     LEFT JOIN pg_tables pt ON pt.tablename = t.table_name AND pt.schemaname = t.table_schema
     LEFT JOIN pg_stat_user_tables pst ON pst.relname = t.table_name AND pst.schemaname = t.table_schema
