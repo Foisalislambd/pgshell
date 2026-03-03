@@ -49,9 +49,11 @@ export async function runInteractiveUI() {
       }
 
       console.log(chalk.cyan('\nConnecting to database...'));
+      const start = Date.now();
       await connect({ connectionString });
       connected = true;
-      console.log(chalk.green('✓ Connected successfully!\n'));
+      const ms = Date.now() - start;
+      console.log(chalk.green(`✓ Connected successfully! (${ms}ms)\n`));
     } catch (error: unknown) {
       const err = error as Error & { name?: string };
       if (err?.name === 'ExitPromptError' || err?.message?.includes('SIGINT')) {
@@ -67,8 +69,11 @@ export async function runInteractiveUI() {
   let exit = false;
   while (!exit) {
     try {
+      const currentDb = await getCurrentDatabase();
+      const dbLabel = currentDb ? chalk.dim(` │ 📂 ${currentDb}`) : '';
+
       const action = await select({
-        message: chalk.bold('What would you like to do?'),
+        message: chalk.bold('What would you like to do?') + dbLabel,
         pageSize: 18,
         choices: [
           { name: '📋 List all tables', value: 'list_tables', description: 'See what tables exist in the database' },
@@ -196,7 +201,7 @@ async function handleCreateDatabase() {
 
   try {
     await dbQuery(`CREATE DATABASE "${dbName}"`);
-    console.log(chalk.green(`\n✓ Database "${dbName}" created successfully!`));
+    console.log(chalk.green(`\n✓ Database "${dbName}" created! You can switch to it from the menu anytime.`));
   } catch (err: unknown) {
     console.log(chalk.red(`\nFailed to create database: ${sanitizeErrorMessage(err)}`));
   }
@@ -281,7 +286,7 @@ async function handleSwitchDatabase() {
   try {
     await disconnect();
     await connect({ connectionString: newUrl });
-    console.log(chalk.green(`\n✓ Switched to database "${dbToSwitch}".`));
+    console.log(chalk.green(`\n✓ You're now working with "${dbToSwitch}".`));
   } catch (err: unknown) {
     console.log(chalk.red(`\nFailed to switch: ${sanitizeErrorMessage(err)}`));
     if (fallbackUrl) {
@@ -363,6 +368,22 @@ async function handleViewTable() {
   renderTable(result.rows);
 }
 
+function getInsertHint(columnName: string, dataType: string, isAutoInc: boolean, columnDefault: string | null): string {
+  if (isAutoInc) return chalk.dim(' [leave blank for auto]');
+  const lower = columnName.toLowerCase();
+  const type = dataType.toLowerCase();
+  const hasDefault = columnDefault && !columnDefault.includes('nextval');
+
+  if (type.includes('timestamp') || type === 'date') return chalk.dim(' [leave blank for NOW()]');
+  if (type.includes('boolean') || type === 'bool') return chalk.dim(' [true/false]');
+  if (type.includes('int') || type === 'serial' || type === 'bigserial') return chalk.dim(' [e.g. 42]');
+  if (type.includes('uuid')) return chalk.dim(' [e.g. 550e8400-e29b-41d4-a716-446655440000]');
+  if ((type.includes('varchar') || type === 'text' || type.includes('character')) && lower.includes('email')) return chalk.dim(' [e.g. user@example.com]');
+  if ((type.includes('varchar') || type === 'text') && (lower.includes('name') || lower.includes('title'))) return chalk.dim(' [e.g. John Doe]');
+  if (hasDefault) return chalk.dim(' [leave blank for default]');
+  return chalk.dim(' [leave blank for NULL]');
+}
+
 async function handleInsertRow() {
   const tables = await getPublicTables();
   if (tables.length === 0) {
@@ -386,11 +407,11 @@ async function handleInsertRow() {
   console.log(chalk.dim(`\nInserting a new row into "${tableName}". Leave blank to use DEFAULT/NULL.`));
 
   for (const col of colInfo.rows) {
-    // Skip auto-incrementing columns by default if they have a nextval default
     const isAutoInc = col.column_default && col.column_default.includes('nextval');
-    
+    const hint = getInsertHint(col.column_name, col.data_type, isAutoInc, col.column_default);
+
     const value = await input({
-      message: `${col.column_name} (${col.data_type})${isAutoInc ? ' [Auto-inc]' : ''}:`,
+      message: `${col.column_name} (${col.data_type})${hint}:`,
     });
 
     if (value.trim() !== '') {
@@ -411,7 +432,7 @@ async function handleInsertRow() {
   
   try {
     const result = await dbQuery(sql, values);
-    console.log(chalk.green(`\n✓ Row inserted successfully!`));
+    console.log(chalk.green(`\n✓ Your new record was added!`));
     renderTable(result.rows);
   } catch (err: unknown) {
     console.log(chalk.red(`\nFailed to insert row: ${sanitizeErrorMessage(err)}`));
@@ -451,7 +472,7 @@ async function handleCreateTable() {
   
   try {
     await dbQuery(sql);
-    console.log(chalk.green(`\n✓ Table "${tableName}" created successfully!`));
+    console.log(chalk.green(`\n✓ Table "${tableName}" is ready! Use "View table data" or "Add new row" to start using it.`));
   } catch (err: unknown) {
     console.log(chalk.red(`\nFailed to create table: ${sanitizeErrorMessage(err)}`));
   }
@@ -513,8 +534,8 @@ async function handleRunQuery() {
   try {
     const result = await dbQuery(sql);
     const commandLabel = result.command || 'query';
-    const rowCount = result.rowCount !== null ? `(${result.rowCount} rows affected)` : '';
-    console.log(chalk.green(`\nExecuted successfully: ${chalk.bold(commandLabel)} ${rowCount}`));
+    const rowCount = result.rowCount !== null ? `(${result.rowCount} rows)` : '';
+    console.log(chalk.green(`\n✓ Done! ${chalk.bold(commandLabel)} ${rowCount}`));
     if (result.rows && result.rows.length > 0) {
       renderTable(result.rows);
     }
