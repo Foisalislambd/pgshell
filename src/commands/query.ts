@@ -3,10 +3,12 @@ import { connect, disconnect, query } from '../db/client.js';
 import { renderTable } from '../ui/tableRenderer.js';
 import { getDbUrlFromEnv, printEnvHint } from '../db/env.js';
 import { sanitizeErrorMessage } from '../utils/sanitizeError.js';
+import { withSpinner } from '../utils/spinner.js';
+import { highlightSql } from '../utils/sqlHighlight.js';
 
 export async function executeQueryCommand(sql: string) {
   const connectionString = getDbUrlFromEnv();
-  
+
   if (!connectionString) {
     console.error(chalk.red('\nError: Missing database credentials.\n'));
     printEnvHint();
@@ -15,12 +17,15 @@ export async function executeQueryCommand(sql: string) {
 
   try {
     await connect({ connectionString });
-    const result = await query(sql);
+    const result = await withSpinner('Running query...', () => query(sql), {
+      failMessage: 'Query failed'
+    });
     
     const commandLabel = result.command || 'query';
     const rowCount = result.rowCount !== null ? `(${result.rowCount} rows affected)` : '';
     
-    console.log(chalk.green(`\nExecuted successfully: ${chalk.bold(commandLabel)} ${rowCount}`));
+    console.log(chalk.dim('\nQuery: ') + highlightSql(sql));
+    console.log(chalk.green(`\n✓ ${chalk.bold(commandLabel)} ${rowCount}`));
     
     if (result.rows && result.rows.length > 0) {
       renderTable(result.rows);

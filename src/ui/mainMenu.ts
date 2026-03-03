@@ -2,9 +2,12 @@ import { input, select, password, confirm } from '@inquirer/prompts';
 import chalk from 'chalk';
 import { connect, disconnect, query as dbQuery, getAdminConnectionString, runOnDatabase } from '../db/client.js';
 import { renderTable } from './tableRenderer.js';
+import { fuzzySelect } from './fuzzySelect.js';
 import { getDbUrlFromEnv, printEnvHint } from '../db/env.js';
 import { printBanner } from '../utils/banner.js';
 import { sanitizeErrorMessage } from '../utils/sanitizeError.js';
+import { withSpinner } from '../utils/spinner.js';
+import { highlightSql } from '../utils/sqlHighlight.js';
 
 export async function runInteractiveUI() {
   console.clear();
@@ -48,12 +51,14 @@ export async function runInteractiveUI() {
         }
       }
 
-      console.log(chalk.cyan('\nConnecting to database...'));
-      const start = Date.now();
-      await connect({ connectionString });
-      connected = true;
-      const ms = Date.now() - start;
-      console.log(chalk.green(`✓ Connected successfully! (${ms}ms)\n`));
+      await withSpinner(
+        'Connecting to your database...',
+        async () => {
+          await connect({ connectionString });
+          connected = true;
+        },
+        { successMessage: chalk.green("Connected! You're ready to go.\n") }
+      );
     } catch (error: unknown) {
       const err = error as Error & { name?: string };
       if (err?.name === 'ExitPromptError' || err?.message?.includes('SIGINT')) {
@@ -72,26 +77,28 @@ export async function runInteractiveUI() {
       const currentDb = await getCurrentDatabase();
       const dbLabel = currentDb ? chalk.dim(` │ 📂 ${currentDb}`) : '';
 
-      const action = await select({
-        message: chalk.bold('What would you like to do?') + dbLabel,
-        pageSize: 18,
-        choices: [
-          { name: '📋 List all tables', value: 'list_tables', description: 'See what tables exist in the database' },
-          { name: '🔍 View table data', value: 'view_table', description: 'Browse rows/records in any table' },
-          { name: '📖 Table structure', value: 'describe_table', description: 'See columns, types, and details' },
-          { name: '➕ Create new table', value: 'create_table', description: 'Create a new table easily' },
-          { name: '📥 Add new row', value: 'insert_row', description: 'Insert a new record into a table' },
-          { name: '🗑️  Delete one table', value: 'drop_table', description: 'Remove a single table' },
-          { name: '🚨 Delete all tables', value: 'drop_all_tables', description: 'Warning! Removes all data' },
-          { name: '⚡ Run custom SQL', value: 'run_query', description: 'Execute any SQL command' },
-          { name: '📊 Monitor active queries', value: 'monitor', description: 'See what queries are running now' },
-          { name: '📂 List all databases', value: 'list_databases', description: 'See all databases on the server' },
-          { name: '➕ Create database', value: 'create_database', description: 'Create a new database' },
-          { name: '🗑️  Delete database', value: 'drop_database', description: 'Remove a database (with confirmation)' },
-          { name: '🔄 Switch database', value: 'switch_database', description: 'Reconnect to a different database' },
-          { name: '❌ Disconnect & Exit', value: 'exit', description: 'Close connection and quit' }
-        ]
-      });
+      const menuChoices = [
+        { name: '📋 List all tables', value: 'list_tables' as const, description: 'See what tables exist' },
+        { name: '🔍 View table data', value: 'view_table' as const, description: 'Browse rows in any table' },
+        { name: '📖 Table structure', value: 'describe_table' as const, description: 'See columns, types, details' },
+        { name: '➕ Create new table', value: 'create_table' as const, description: 'Create a new table' },
+        { name: '📥 Add new row', value: 'insert_row' as const, description: 'Insert a record' },
+        { name: '🗑️  Delete one table', value: 'drop_table' as const, description: 'Remove a single table' },
+        { name: '🚨 Delete all tables', value: 'drop_all_tables' as const, description: 'Warning! Removes all data' },
+        { name: '⚡ Run custom SQL', value: 'run_query' as const, description: 'Execute any SQL' },
+        { name: '📊 Monitor active queries', value: 'monitor' as const, description: 'See running queries' },
+        { name: '📂 List all databases', value: 'list_databases' as const, description: 'See all databases' },
+        { name: '➕ Create database', value: 'create_database' as const, description: 'Create new database' },
+        { name: '🗑️  Delete database', value: 'drop_database' as const, description: 'Remove database' },
+        { name: '🔄 Switch database', value: 'switch_database' as const, description: 'Reconnect to different DB' },
+        { name: '❌ Disconnect & Exit', value: 'exit' as const, description: 'Close and quit' }
+      ];
+
+      const action = await fuzzySelect(
+        chalk.bold('What would you like to do?') + dbLabel + chalk.dim(' (type to filter)'),
+        menuChoices,
+        { pageSize: 12 }
+      );
 
       switch (action) {
         case 'list_databases':
@@ -217,13 +224,13 @@ async function handleDropDatabase() {
     return;
   }
 
-  const dbToDrop = await select({
-    message: 'Select a database to DROP:',
-    choices: databases.map((r) => ({
+  const dbToDrop = await fuzzySelect(
+    'Select a database to DROP (type to search):',
+    databases.map((r) => ({
       name: `${r.Database} (${r.Size})` + (r.Database === currentDb ? ' [current]' : ''),
       value: r.Database
     }))
-  });
+  );
 
   const isSure = await confirm({
     message: `Are you sure you want to DROP database "${dbToDrop}"? All data will be permanently lost!`,
@@ -263,13 +270,13 @@ async function handleSwitchDatabase() {
     return;
   }
 
-  const dbToSwitch = await select({
-    message: 'Select database to connect to:',
-    choices: databases.map((r) => ({
+  const dbToSwitch = await fuzzySelect(
+    'Select database to connect to (type to search):',
+    databases.map((r) => ({
       name: `${r.Database} (${r.Size})` + (r.Database === currentDb ? ' [current]' : ''),
       value: r.Database
     }))
-  });
+  );
 
   if (dbToSwitch === currentDb) {
     console.log(chalk.gray('\nAlready connected to that database.'));
@@ -325,10 +332,10 @@ async function handleDescribeTable() {
     console.log(chalk.yellow('No tables found in public schema.'));
     return;
   }
-  const tableName = await select({
-    message: 'Select a table to describe:',
-    choices: tables.map(r => ({ name: r.table_name, value: r.table_name }))
-  });
+  const tableName = await fuzzySelect(
+    'Select a table to describe (type to search):',
+    tables.map((r) => ({ name: r.table_name, value: r.table_name }))
+  );
 
   const sql = `
     SELECT 
@@ -352,10 +359,10 @@ async function handleViewTable() {
     console.log(chalk.yellow('No tables found in public schema.'));
     return;
   }
-  const tableName = await select({
-    message: 'Select a table to view:',
-    choices: tables.map(r => ({ name: r.table_name, value: r.table_name }))
-  });
+  const tableName = await fuzzySelect(
+    'Select a table to view (type to search):',
+    tables.map((r) => ({ name: r.table_name, value: r.table_name }))
+  );
 
   const limit = await input({
     message: 'How many rows to fetch?',
@@ -390,10 +397,10 @@ async function handleInsertRow() {
     console.log(chalk.yellow('No tables found to insert data into.'));
     return;
   }
-  const tableName = await select({
-    message: 'Select a table to insert into:',
-    choices: tables.map(r => ({ name: r.table_name, value: r.table_name }))
-  });
+  const tableName = await fuzzySelect(
+    'Select a table to insert into (type to search):',
+    tables.map((r) => ({ name: r.table_name, value: r.table_name }))
+  );
 
   // Get column info to prompt user correctly
   const colInfo = await dbQuery(`
@@ -484,10 +491,10 @@ async function handleDropSpecificTable() {
     console.log(chalk.yellow('No tables found in public schema.'));
     return;
   }
-  const tableName = await select({
-    message: 'Select a table to DROP:',
-    choices: tables.map(r => ({ name: r.table_name, value: r.table_name }))
-  });
+  const tableName = await fuzzySelect(
+    'Select a table to DROP (type to search):',
+    tables.map((r) => ({ name: r.table_name, value: r.table_name }))
+  );
 
   const isSure = await confirm({ 
     message: `Are you sure you want to drop table "${tableName}"? (This will also drop dependent objects)`, 
@@ -526,16 +533,24 @@ async function handleDropAllTables() {
 
 async function handleRunQuery() {
   const sql = await input({
-    message: 'Enter your SQL query:'
+    message: 'Enter your SQL query (we\'ll run it for you):'
   });
 
   if (!sql.trim()) return;
 
   try {
-    const result = await dbQuery(sql);
+    const result = await withSpinner(
+      'Running your query...',
+      () => dbQuery(sql),
+      {
+        successMessage: chalk.green('Query completed!'),
+        failMessage: 'Query failed'
+      }
+    );
     const commandLabel = result.command || 'query';
-    const rowCount = result.rowCount !== null ? `(${result.rowCount} rows)` : '';
-    console.log(chalk.green(`\n✓ Done! ${chalk.bold(commandLabel)} ${rowCount}`));
+    const rowCount = result.rowCount !== null ? ` (${result.rowCount} rows)` : '';
+    console.log(chalk.dim('\nExecuted: ') + highlightSql(sql));
+    console.log(chalk.green(`\n✓ ${chalk.bold(commandLabel)}${rowCount}`));
     if (result.rows && result.rows.length > 0) {
       renderTable(result.rows);
     }

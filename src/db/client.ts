@@ -33,6 +33,7 @@ export function connect(config: DBConnectionConfig): Promise<void> {
         .then(() => resolve())
         .catch((err) => {
           pool = null;
+          storedConnectionString = null;
           reject(err);
         });
     } catch (err) {
@@ -52,7 +53,7 @@ export function disconnect(): Promise<void> {
   return Promise.resolve();
 }
 
-export async function query(text: string, params?: any[]): Promise<pg.QueryResult> {
+export async function query(text: string, params?: unknown[]): Promise<pg.QueryResult> {
   if (!pool) {
     throw new Error('Database not connected. Please connect first.');
   }

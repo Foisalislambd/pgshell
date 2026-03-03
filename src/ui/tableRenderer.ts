@@ -21,15 +21,14 @@ export function renderTable(rows: Record<string, unknown>[], headers?: string[])
     }
   });
 
-  rows.forEach(row => {
-    const values = keys.map(k => {
-      let val = row[k];
-      if (val === null) return chalk.gray('NULL');
+  rows.forEach((row) => {
+    const values = keys.map((k) => {
+      const val = row[k];
+      if (val === null || val === undefined) return chalk.gray(val === null ? 'NULL' : '-');
       if (typeof val === 'object') return JSON.stringify(val);
       if (typeof val === 'number') return chalk.yellow(String(val));
       if (typeof val === 'boolean') return val ? chalk.green('true') : chalk.red('false');
-      
-      // Truncate long strings
+
       const strVal = String(val);
       if (strVal.length > 50) return strVal.substring(0, 47) + '...';
       return strVal;
