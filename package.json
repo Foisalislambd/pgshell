@@ -1,6 +1,6 @@
 {
   "name": "pgshell",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "All-in-one powerful and human-friendly PostgreSQL CLI manager",
   "main": "dist/index.js",
   "type": "module",

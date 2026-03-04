@@ -15,7 +15,7 @@ const program = new Command();
 program
   .name('pgshell')
   .description('All-in-one powerful and human-friendly PostgreSQL CLI Manager')
-  .version('1.0.2');
+  .version('1.0.3');
 
 // Helper to handle any top-level graceful exits
 const handleExit = (error: unknown) => {
