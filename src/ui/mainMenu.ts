@@ -8,7 +8,6 @@ import { printBanner } from '../utils/banner.js';
 import { sanitizeErrorMessage } from '../utils/sanitizeError.js';
 import { withSpinner } from '../utils/spinner.js';
 import { highlightSql } from '../utils/sqlHighlight.js';
-import { createDatabaseBackup } from '../utils/backup.js';
 
 export async function runInteractiveUI() {
   console.clear();
@@ -61,12 +60,6 @@ export async function runInteractiveUI() {
         { successMessage: chalk.green("Connected! You're ready to go.\n") }
       );
 
-      const backupResult = await createDatabaseBackup(connectionString);
-      if (backupResult.success) {
-        console.log(chalk.dim(`   📦 Backup saved: ${backupResult.path}\n`));
-      } else {
-        console.log(chalk.yellow(`   ⚠ Backup skipped: ${backupResult.error}\n`));
-      }
     } catch (error: unknown) {
       const err = error as Error & { name?: string };
       if (err?.name === 'ExitPromptError' || err?.message?.includes('SIGINT')) {

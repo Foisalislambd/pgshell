@@ -4,9 +4,6 @@ node_modules/
 # Build output
 dist/
 
-# Database backups
-backups/
-
 # Environment variables
 .env
 .env.local
