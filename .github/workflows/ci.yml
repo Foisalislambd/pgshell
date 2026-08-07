@@ -15,7 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: [18, 20, 22]
+        # Vitest 4.1+ / ESLint 10 need Node 20+ (util.styleText, etc.)
+        node-version: [20, 22, 24]
 
     steps:
       - name: Checkout
